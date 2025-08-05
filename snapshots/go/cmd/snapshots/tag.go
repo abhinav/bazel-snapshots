@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/storage"
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/tagger"
 )
 
@@ -38,7 +39,6 @@ snapshot which was most recently deployed.
 `,
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-
 		},
 	}
 
@@ -96,12 +96,16 @@ func (tc *tagCmd) runTag(cmd *cobra.Command, args []string) error {
 	log.Printf("snapshot:  %s", tc.snapshotName)
 	log.Printf("tag:       %s", tc.tagName)
 
+	store, err := storage.NewStorage(tc.storageUrl)
+	if err != nil {
+		return fmt.Errorf("open storage client: %w", err)
+	}
+
 	tagArgs := tagger.TagArgs{
 		SnapshotName: tc.snapshotName,
-		StorageUrl:   tc.storageUrl,
 		TagName:      tc.tagName,
 	}
-	obj, err := tagger.NewTagger().Tag(ctx, &tagArgs)
+	obj, err := tagger.NewTagger(store).Tag(ctx, &tagArgs)
 	if err != nil {
 		return err
 	}
