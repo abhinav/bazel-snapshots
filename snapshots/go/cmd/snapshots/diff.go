@@ -15,6 +15,7 @@ import (
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/differ"
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/getter"
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/models"
+	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/storage"
 )
 
 type diffCmd struct {
@@ -79,7 +80,7 @@ names.`,
 	return dc
 }
 
-func (dc *diffCmd) resolveSnapshot(ctx context.Context, name, storageUrl string) (*models.Snapshot, error) {
+func (dc *diffCmd) resolveSnapshot(ctx context.Context, name string, store getter.Storage) (*models.Snapshot, error) {
 	// Might be a file
 	if _, err := os.Stat(name); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to look for file: %w", err)
@@ -92,13 +93,17 @@ func (dc *diffCmd) resolveSnapshot(ctx context.Context, name, storageUrl string)
 		return snapshot, json.Unmarshal(fileBytes, snapshot)
 	}
 
-	getArgs := getter.GetArgs{
-		Name:       name,
-		StorageUrl: dc.storageUrl,
-		SkipNames:  false,
-		SkipTags:   false,
+	// If the name is not a file, we'll have to look it up in the store.
+	if store == nil {
+		return nil, fmt.Errorf("no storage provided, cannot resolve snapshot %s", name)
 	}
-	return getter.NewGetter().Get(ctx, &getArgs)
+
+	getArgs := getter.GetArgs{
+		Name:      name,
+		SkipNames: false,
+		SkipTags:  false,
+	}
+	return getter.NewGetter(store).Get(ctx, &getArgs)
 }
 
 func (dc *diffCmd) checkArgs(args []string) error {
@@ -143,8 +148,16 @@ func (dc *diffCmd) runDiff(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
+	var store getter.Storage
+	if dc.storageUrl != "" {
+		store, err = storage.NewStorage(dc.storageUrl)
+		if err != nil {
+			return fmt.Errorf("open storage: %w", err)
+		}
+	}
+
 	fromSnapshotName := args[0]
-	if fromSnapshot, err := dc.resolveSnapshot(ctx, fromSnapshotName, dc.storageUrl); err != nil {
+	if fromSnapshot, err := dc.resolveSnapshot(ctx, fromSnapshotName, store); err != nil {
 		return fmt.Errorf("failed to get snapshot %s: %w", fromSnapshotName, err)
 	} else {
 		dc.fromSnapshot = fromSnapshot
@@ -152,7 +165,7 @@ func (dc *diffCmd) runDiff(cmd *cobra.Command, args []string) error {
 
 	if len(args) == 2 {
 		toSnapshotName := args[1]
-		if toSnapshot, err := dc.resolveSnapshot(ctx, toSnapshotName, dc.storageUrl); err != nil {
+		if toSnapshot, err := dc.resolveSnapshot(ctx, toSnapshotName, store); err != nil {
 			return fmt.Errorf("failed to get snapshot %s: %w", toSnapshotName, err)
 		} else {
 			dc.toSnapshot = toSnapshot
