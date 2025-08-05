@@ -14,6 +14,7 @@ import (
 
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/models"
 	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/pusher"
+	"github.com/cognitedata/bazel-snapshots/snapshots/go/pkg/storage"
 )
 
 type pushCmd struct {
@@ -100,12 +101,16 @@ func (pc *pushCmd) runPush(cmd *cobra.Command, args []string) error {
 	log.Printf("workspace: %s", pc.workspacePath)
 	log.Printf("storage:    %s", pc.storageUrl)
 
-	pushArgs := pusher.PushArgs{
-		Name:       pc.name,
-		StorageUrl: pc.storageUrl,
-		Snapshot:   pc.snapshot,
+	store, err := storage.NewStorage(pc.storageUrl)
+	if err != nil {
+		return fmt.Errorf("open storage client: %w", err)
 	}
-	obj, err := pusher.NewPusher().Push(ctx, &pushArgs)
+
+	pushArgs := pusher.PushArgs{
+		Name:     pc.name,
+		Snapshot: pc.snapshot,
+	}
+	obj, err := pusher.NewPusher(store).Push(ctx, &pushArgs)
 	if err != nil {
 		return err
 	}
